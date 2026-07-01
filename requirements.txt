@@ -1,0 +1,30 @@
+# 玄関モニタリングシステム — Python依存ライブラリ
+#
+# Raspberry Pi 5 上で以下のコマンドでインストール:
+#   pip install -r requirements.txt
+#
+# ※ RPi.GPIO と gpiozero は Raspberry Pi OS に標準でインストール済みの場合があります
+
+# 物体検知
+ultralytics>=8.0.0          # YOLOv8 (モデルファイルは初回起動時に自動ダウンロード)
+opencv-python>=4.8.0        # USBカメラ制御・画像処理
+
+# GPIO制御
+RPi.GPIO>=0.7.1             # GPIO操作 (Raspi5対応)
+gpiozero>=2.0               # GPIOの高レベルAPI
+
+# HTTP通信 (LINE API)
+requests>=2.31.0
+
+# ネットワーク在宅判定
+# scapy>=2.5.0              # ARPスキャン(オプション: pip install scapy)
+                            # → システム標準の arp コマンドで代替可能
+
+# ユーティリティ
+numpy>=1.24.0               # 画像処理の数値計算
+python-dotenv>=1.0.0        # .env ファイルの読み込み
+
+# 訪問者分類モデル（SVM）
+scikit-learn>=1.3.0         # SVM分類器（train_svm.py / classifier.py）
+joblib>=1.3.0               # モデルの保存・読み込み
+

@@ -1,0 +1,29 @@
+[Unit]
+Description=玄関モニタリングシステム (Doorbell Monitor)
+After=network.target
+Wants=network-online.target
+
+[Service]
+# 実行ユーザー (通常は "pi" または自分のユーザー名に変更してください)
+User=pi
+Group=pi
+
+# プロジェクトディレクトリ (実際のパスに変更してください)
+WorkingDirectory=/home/pi/LineBot
+
+# 仮想環境の Python を使用
+ExecStart=/home/pi/LineBot/venv/bin/python /home/pi/LineBot/main.py
+
+# 異常終了時に自動再起動
+Restart=always
+RestartSec=10
+
+# ログをジャーナルに出力
+StandardOutput=append:/home/pi/LineBot/doorbell.log
+StandardError=append:/home/pi/LineBot/doorbell.log
+
+# GPIO アクセスのための環境変数
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

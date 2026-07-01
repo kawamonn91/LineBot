@@ -1,0 +1,22 @@
+# 機密ファイル（Git管理外）
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+
+# データ（起動後に自動生成）
+data/
+
+# ログ
+doorbell.log
+
+# エディタ
+.vscode/
+.idea/
+*.swp
+*.swo
