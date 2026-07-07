@@ -28,3 +28,7 @@ python-dotenv>=1.0.0        # .env ファイルの読み込み
 scikit-learn>=1.3.0         # SVM分類器（train_svm.py / classifier.py）
 joblib>=1.3.0               # モデルの保存・読み込み
 
+# Google Drive 連携
+google-api-python-client>=2.100.0  # Google Drive API クライアント
+google-auth>=2.23.0                # サービスアカウント認証
+google-auth-httplib2>=0.2.0        # HTTP ライブラリ

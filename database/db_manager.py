@@ -14,7 +14,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config
-from database.models import ALL_CREATE_STATEMENTS
+from database.models import ALL_CREATE_STATEMENTS, MIGRATE_STATEMENTS
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,8 @@ def get_connection():
     """SQLite接続のコンテキストマネージャー（自動コミット・クローズ）"""
     conn = sqlite3.connect(config.DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row  # 辞書形式でアクセス可能
+    # WALモード: クラッシュ耐性と書き込み効率を向上（電源断によるDB破損リスクを軽減）
+    conn.execute("PRAGMA journal_mode=WAL")
     try:
         yield conn
         conn.commit()
@@ -36,12 +38,19 @@ def get_connection():
 
 
 def initialize_db():
-    """データベースとテーブルを初期化します。"""
+    """データベースとテーブルを初期化します。既存DBへのマイグレーションも実行します。"""
     os.makedirs(os.path.dirname(config.DB_PATH), exist_ok=True)
     with get_connection() as conn:
         cursor = conn.cursor()
+        # テーブル作成
         for stmt in ALL_CREATE_STATEMENTS:
             cursor.execute(stmt)
+        # 既存DBへのカラム追加マイグレーション（失敗しても続行）
+        for stmt in MIGRATE_STATEMENTS:
+            try:
+                cursor.execute(stmt)
+            except Exception:
+                pass  # カラムが既に存在する場合は無視
     logger.info(f"データベース初期化完了: {config.DB_PATH}")
 
 
@@ -90,6 +99,18 @@ def update_visitor_delivery(visitor_id: int, has_delivery: bool):
             "UPDATE visitors SET has_delivery=? WHERE id=?",
             (int(has_delivery), visitor_id),
         )
+
+
+def update_visitor_drive_url(
+    visitor_id: int, drive_url: str, drive_file_id: str
+):
+    """訪問者レコードにGoogle DriveのURLとファイルIDを記録します。"""
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE visitors SET image_drive_url=?, drive_file_id=? WHERE id=?",
+            (drive_url, drive_file_id, visitor_id),
+        )
+    logger.debug(f"Drive URL更新 ID={visitor_id} url={drive_url}")
 
 
 def get_todays_visitors() -> List[Dict[str, Any]]:
@@ -149,7 +170,13 @@ def get_todays_mailbox_events() -> List[Dict[str, Any]]:
 # ============================================================
 
 def insert_presence(is_home: bool):
-    """在宅判定結果をログに記録します。"""
+    """在宅判定結果をログに記録します。前回と状態が同じ場合は書き込みをスキップします。
+    （SDカードへの無駄な書き込みを削減するための最適化）
+    """
+    # 最新の状態と比較して変化がなければスキップ
+    latest = get_latest_presence()
+    if latest is not None and latest == is_home:
+        return  # 変化なし → 書き込み不要
     with get_connection() as conn:
         conn.execute(
             "INSERT INTO presence_log (is_home) VALUES (?)", (int(is_home),)

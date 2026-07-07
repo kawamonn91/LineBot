@@ -14,6 +14,7 @@ Ctrl+C または SIGTERM で安全に終了します。
 """
 
 import logging
+import logging.handlers
 import os
 import signal
 import sys
@@ -29,7 +30,13 @@ logging.basicConfig(
     level=getattr(logging, config.LOG_LEVEL, logging.INFO),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[
-        logging.FileHandler(config.LOG_FILE, encoding="utf-8"),
+        # RotatingFileHandler: 最大10MB × 3ファイル（SD容量保護のためローテーション）
+        logging.handlers.RotatingFileHandler(
+            config.LOG_FILE,
+            maxBytes=config.LOG_MAX_BYTES,
+            backupCount=config.LOG_BACKUP_COUNT,
+            encoding="utf-8",
+        ),
         logging.StreamHandler(sys.stdout),
     ],
 )
@@ -46,6 +53,7 @@ from detection.classifier import VisitorClassifier
 from presence.network_checker import NetworkPresenceChecker
 from notification.line_bot import send_visitor_notification
 from scheduler.daily_report import DailyReportScheduler
+from storage.google_drive import DriveUploader
 
 
 class DoorbellSystem:
@@ -64,6 +72,7 @@ class DoorbellSystem:
         self._classifier: Optional[VisitorClassifier] = None
         self._presence: Optional[NetworkPresenceChecker] = None
         self._scheduler: Optional[DailyReportScheduler] = None
+        self._drive_uploader: Optional[DriveUploader] = None
 
         # 状態
         self._running = False
@@ -136,7 +145,7 @@ class DoorbellSystem:
         if is_home is None:
             is_home = True  # 判定不能な場合は在宅とみなし通知を省略
 
-        # ── 6. データベースに保存 ───────────────────────────────
+        # ── 6. データベースに保存 ───────────────────────────
         visitor_id = db_manager.insert_visitor(
             duration_sec=duration_sec,
             category=category,
@@ -150,7 +159,7 @@ class DoorbellSystem:
         if has_delivery:
             db_manager.update_visitor_delivery(visitor_id, True)
 
-        # ── 7. 不在時のみLINE通知 ───────────────────────────────
+        # ── 7. 不在時のみLINE通知 ───────────────────────────
         if not is_home:
             logger.info("不在中のため LINE 通知を送信します")
             visitor_record = {
@@ -170,6 +179,13 @@ class DoorbellSystem:
                 db_manager.mark_visitor_notified(visitor_id)
         else:
             logger.info("在宅中のため LINE 通知をスキップ")
+
+        # ── 8. Google Drive へ非同期アップロード ────────────
+        if image_path and self._drive_uploader:
+            self._drive_uploader.enqueue(
+                local_path=image_path,
+                visitor_id=visitor_id,
+            )
 
     def _on_presence_change(self, is_home: bool):
         """在宅状態変化コールバック。"""
@@ -242,6 +258,10 @@ class DoorbellSystem:
         self._scheduler = DailyReportScheduler()
         self._scheduler.start()
 
+        # Google Drive アップローダー
+        self._drive_uploader = DriveUploader()
+        self._drive_uploader.start()
+
         self._running = True
         logger.info("✅ 全モジュール起動完了。監視中...")
         logger.info(f"   PIR GPIO: {config.PIR_GPIO_PIN}")
@@ -259,7 +279,7 @@ class DoorbellSystem:
 
         for component in [
             self._pir, self._mailbox, self._tracker,
-            self._presence, self._scheduler,
+            self._presence, self._scheduler, self._drive_uploader,
         ]:
             if component:
                 try:

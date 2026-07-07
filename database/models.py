@@ -27,11 +27,19 @@ CREATE TABLE IF NOT EXISTS visitors (
     category        TEXT     NOT NULL DEFAULT 'other',
     confidence      REAL     NOT NULL DEFAULT 0.0,
     image_path      TEXT,
+    image_drive_url TEXT,
+    drive_file_id   TEXT,
     has_delivery    BOOLEAN  DEFAULT 0,
     user_was_home   BOOLEAN  DEFAULT 0,
     notified        BOOLEAN  DEFAULT 0
 );
 """
+
+# 既存DBへの追加マイグレーション（ALTER TABLE は IF NOT EXISTS 非対応のため try/except で対処）
+MIGRATE_STATEMENTS = [
+    "ALTER TABLE visitors ADD COLUMN image_drive_url TEXT",
+    "ALTER TABLE visitors ADD COLUMN drive_file_id TEXT",
+]
 
 CREATE_MAILBOX_TABLE = """
 CREATE TABLE IF NOT EXISTS mailbox_events (

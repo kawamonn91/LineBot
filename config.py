@@ -106,3 +106,27 @@ DAILY_REPORT_TIME = "19:00"    # 日次レポート送信時刻
 # ============================================================
 LOG_LEVEL = "INFO"   # DEBUG / INFO / WARNING / ERROR
 LOG_FILE = os.path.join(BASE_DIR, "doorbell.log")
+# RotatingFileHandler設定（SD容量保護）
+LOG_MAX_BYTES = 10 * 1024 * 1024   # 10MBごとにローテーション
+LOG_BACKUP_COUNT = 3                # 最大30MB保持（doorbell.log + .1 + .2 + .3）
+
+# ============================================================
+# Google Drive 設定
+# ============================================================
+# サービスアカウントのJSONキーファイルのパス
+# 例: /home/pi/linebot-service-account.json
+GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv(
+    "GOOGLE_SERVICE_ACCOUNT_JSON",
+    os.path.join(BASE_DIR, "service_account.json"),
+)
+# 画像アップロード先のGoogle DriveフォルダID
+# フォルダを開き、URLに含まれる「1AbcXyz...」の文字列を設定
+GOOGLE_DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")
+# Google Drive内のサブフォルダ名（年月ごとにサブフォルダを作成する場合等）
+GOOGLE_DRIVE_SUBFOLDER = os.getenv("GOOGLE_DRIVE_SUBFOLDER", "visitors")
+# ローカルに画像を保持する日数（Driveアップロード成功後に削除）
+IMAGE_LOCAL_RETENTION_DAYS = int(os.getenv("IMAGE_LOCAL_RETENTION_DAYS", "3"))
+# Driveアップロードの最大リトライ回数
+DRIVE_UPLOAD_MAX_RETRIES = 5
+# Drive機能を有効にするか（Falseにするとローカル保存のみ）
+DRIVE_UPLOAD_ENABLED = os.getenv("DRIVE_UPLOAD_ENABLED", "true").lower() == "true"
