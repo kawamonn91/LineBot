@@ -161,27 +161,47 @@ class NetworkPresenceChecker:
 
     def _arp_check(self, ip: str) -> bool:
         """
-        ARPテーブルを参照してデバイスの存在を確認します。
-        ping で応答しないiPhone等のスリープ端末に有効です。
+        ARPネイバーテーブルを参照してデバイスの存在を確認します。
+        `ip neigh show` でエントリの状態を確認します。
+
+        【家庭内LAN向けの判定ロジック】
+        在宅とみなす状態:
+            REACHABLE : 最近通信が確認されたアクティブなエントリ
+            STALE     : スマホがスリープ/節電中（接続は維持）→ 在宅
+            DELAY     : 到達確認の遅延中
+            PROBE     : ARP確認プローブ送信中
+
+        不在とみなす状態（WiFi切断後に移行）:
+            FAILED    : ARP確認失敗（デバイスがネットワークから離脱）→ 不在
+            INCOMPLETE: 未解決（エントリなし相当）→ 不在
+            エントリなし: 記録なし → 不在
+
+        ※ エンタープライズネットワーク（クライアント間通信ブロック環境）では
+           このメソッドは動作しません。家庭のルーターで使用してください。
 
         Returns:
-            ARPテーブルにエントリがあればTrue
+            REACHABLE/STALE/DELAY/PROBEのいずれかであればTrue
         """
         try:
             if _IS_LINUX:
                 result = subprocess.run(
-                    ["arp", "-n", ip],
+                    ["ip", "neigh", "show", ip],
                     capture_output=True,
                     text=True,
                     timeout=5,
                 )
-                # "no entry" や "(incomplete)" は未検出とみなす
-                output = result.stdout.lower()
-                return (
-                    ip in output
-                    and "no entry" not in output
-                    and "incomplete" not in output
-                )
+                output = result.stdout.strip().lower()
+                if not output:
+                    # エントリなし = 不在
+                    return False
+                # 不在確定の状態を明示的にチェック
+                absent_states = {"failed", "incomplete"}
+                if any(state in output for state in absent_states):
+                    logger.debug(f"ARP状態が不在: {output.strip()}")
+                    return False
+                # REACHABLE / STALE / DELAY / PROBE → 在宅
+                present_states = {"reachable", "stale", "delay", "probe"}
+                return any(state in output for state in present_states)
             else:
                 result = subprocess.run(
                     ["arp", "-a", ip],

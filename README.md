@@ -60,61 +60,104 @@ GND (Pin 14)  ──────────────────────
 
 ## セットアップ手順
 
-### 1. ファイルをRaspberry Piにコピー
-Google Driveからダウンロードするか、`git clone` でコピーします。
+### 1. Raspberry Pi にファイルをコピー
 
 ```bash
-# 例: ホームディレクトリにコピー
-cp -r /media/pi/GoogleDrive/LineBot ~/LineBot
+git clone <your-repo-url> ~/LineBot
 cd ~/LineBot
 ```
 
-### 2. 環境構築スクリプトを実行
+### 2. 環境構築（venv + パッケージインストール）
+
+> ⚠️ **Debian 12 (bookworm) の注意**: `setup.sh` は `pip install --upgrade pip` が
+> システム管理Pythonで失敗する場合があります。その場合は以下を手動で実行してください。
+
 ```bash
-chmod +x setup.sh
-./setup.sh
+# venv を作成
+python3 -m venv ~/LineBot/venv
+
+# torch CPU-only 版を先にインストール（CUDA不要・ディスク節約）
+~/LineBot/venv/bin/pip install "torch==2.1.2" "torchvision==0.16.2" \
+    --index-url https://download.pytorch.org/whl/cpu --no-cache-dir
+
+# 残りのパッケージをインストール
+~/LineBot/venv/bin/pip install \
+    "opencv-python>=4.8.0,<5.0" "RPi.GPIO>=0.7.1" "gpiozero>=2.0" \
+    "requests>=2.31.0" "numpy>=1.24.0,<2.0" "python-dotenv>=1.0.0" \
+    "scikit-learn>=1.3.0" "joblib>=1.3.0" \
+    "google-api-python-client>=2.100.0" "google-auth>=2.23.0" \
+    "google-auth-httplib2>=0.2.0" "ultralytics>=8.0.0" --no-cache-dir
 ```
 
-### 3. LINE Bot の設定
-1. [LINE Developers](https://developers.line.biz/) でMessaging APIチャンネルを作成（完了済み）
-2. **Channel Access Token** を発行
-3. **User ID** を確認（LINE公式アカウントマネージャー or Webhookで確認）
+> **システムパッケージ（apt）も必要:**
+> ```bash
+> sudo apt-get install -y python3-venv python3-opencv libopencv-dev \
+>     net-tools arp-scan libatlas-base-dev libhdf5-dev git
+> ```
 
-### 4. config.py を編集
-```python
-# config.py の以下の項目を実際の値に書き換え
-LINE_CHANNEL_ACCESS_TOKEN = "実際のトークンをここに"
-LINE_USER_ID = "Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+### 3. .env を設定
 
-# スマートフォンの固定IPアドレス（ルーターで設定）
-HOME_DEVICE_IPS = [
-    "192.168.1.100",  # あなたのスマートフォン
-]
+```bash
+cp .env.example .env   # .env.example があれば
+nano .env
 ```
 
-### 5. 動作テスト
+```env
+LINE_CHANNEL_ACCESS_TOKEN=<LINEトークン>
+LINE_USER_ID=U<ユーザーID>
+HOME_DEVICE_IPS=192.168.1.100       # Wi-Fi在宅判定を使う場合のスマホIP
+HOME_BT_ADDRESSES=XX:XX:XX:XX:XX:XX # Bluetooth在宅判定を使う場合のスマホBTアドレス
+PRESENCE_USE_BLUETOOTH=true          # true=BT / false=Wi-Fi
+```
+
+### 4. GPIO権限の確認
+
+```bash
+groups $USER
+# "gpio" が含まれていなければ:
+sudo usermod -aG gpio $USER
+# → 一度ログアウト・再ログインが必要
+```
+
+### 5. LINE Bot の動作テスト
+
 ```bash
 source venv/bin/activate
-
-# LINE接続テスト
 python -m notification.line_bot --test
-
-# 在宅判定テスト
-python -m presence.network_checker --debug
-
-# 日次レポートをすぐ送信（テスト）
-python -m scheduler.daily_report --send-now
+# → ✅ 送信成功
 ```
 
-### 6. システム起動
+### 6. 在宅判定テスト
+
+**Bluetooth モード（推奨）:**
+```bash
+# ① スマホとペアリング（初回のみ）
+bluetoothctl
+# [bluetooth]# scan on
+# [bluetooth]# pair XX:XX:XX:XX:XX:XX   ← スマホのBTアドレス
+# [bluetooth]# trust XX:XX:XX:XX:XX:XX
+# [bluetooth]# exit
+
+# ② 動作テスト
+python -m presence.bluetooth_checker --debug
+```
+
+**Wi-Fi モード（家庭内ルーターのみ）:**
+```bash
+python -m presence.network_checker --debug
+```
+
+### 7. システム起動
+
 ```bash
 source venv/bin/activate
 python main.py
 ```
 
-### 7. 自動起動設定（任意）
+### 8. 自動起動設定（任意）
+
 ```bash
-# systemd/doorbell.service の WorkingDirectory と User を実際のパスに変更してから:
+# doorbell.service の User と WorkingDirectory を自分のユーザー名に変更してから:
 sudo cp systemd/doorbell.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable doorbell
@@ -129,16 +172,46 @@ tail -f doorbell.log
 
 ---
 
-## スマートフォン在宅判定の注意事項
+## スマートフォン在宅判定
+
+### 🔵 Bluetooth モード（推奨）
+
+Wi-Fi ネットワーク環境に依存せず、Raspi5 の内蔵 Bluetooth で直接スマホを検知します。
+エンタープライズ/大学ネットワーク等でも動作します。
+
+```env
+# .env 設定
+HOME_BT_ADDRESSES=XX:XX:XX:XX:XX:XX   # スマホのBTアドレス（設定→デバイス情報）
+PRESENCE_USE_BLUETOOTH=true
+```
+
+**スマホのBTアドレス確認（Android）:**
+> 設定 → デバイス情報 → Bluetooth アドレス
+
+**ペアリング手順（初回のみ）:**
+```bash
+bluetoothctl
+# [bluetooth]# scan on
+# [bluetooth]# pair XX:XX:XX:XX:XX:XX
+# [bluetooth]# trust XX:XX:XX:XX:XX:XX
+# [bluetooth]# exit
+```
+
+### 📡 Wi-Fi モード（家庭内ルーター限定）
+
+> ⚠️ エンタープライズ/大学ネットワークではクライアント間通信がブロックされるため動作しません。
+> 家庭用ルーター（クライアントアイソレーションがOFF）環境でのみ使用してください。
+
+```env
+HOME_DEVICE_IPS=192.168.1.100   # ルーターで固定割り当てしたスマホIP
+PRESENCE_USE_BLUETOOTH=false
+```
 
 > ⚠️ **MACアドレスランダム化について**
 >
-> iOS 14以降・Android 10以降では、Wi-Fi接続時にMACアドレスをランダム化する機能が
-> デフォルトで有効です。これを有効のままにするとARPスキャンでデバイスを
-> 識別できなくなります。
->
-> **対処方法**: スマートフォンのWi-Fi設定 → 接続中のネットワーク → 
-> 「プライベートWi-Fiアドレス」or「MACアドレスのランダム化」を **オフ** に設定
+> Android 10以降・iOS 14以降では Wi-Fi 接続時に MAC アドレスをランダム化する機能が
+> デフォルトで有効です。Wi-Fi モードを使う場合はこれを無効化し、
+> ルーターでスマホの MAC に固定 IP を割り当ててください。
 
 ---
 
@@ -147,14 +220,14 @@ tail -f doorbell.log
 ```
 LineBot/
 ├── main.py                    # メインエントリーポイント
-├── config.py                  # ⚙️ 設定ファイル（要編集）
+├── config.py                  # ⚙️ 設定ファイル
 ├── requirements.txt           # Pythonライブラリ一覧
 ├── setup.sh                   # 環境構築スクリプト
 ├── doorbell.log               # 実行ログ（起動後生成）
 │
 ├── sensors/
 │   ├── pir_sensor.py          # HC-SR501 PIRセンサー
-│   └── mailbox_sensor.py      # SW-520D 郵便受けセンサー
+│   └── mailbox_sensor.py      # 郵便受けセンサー
 │
 ├── camera/
 │   ├── camera_module.py       # USBカメラ制御（OpenCV）
@@ -165,7 +238,8 @@ LineBot/
 │   └── classifier.py          # 色ベース訪問者分類
 │
 ├── presence/
-│   └── network_checker.py     # ネットワーク在宅判定
+│   ├── bluetooth_checker.py   # 🔵 Bluetooth在宅判定（推奨）
+│   └── network_checker.py     # 📡 Wi-Fi (ARP/ping) 在宅判定
 │
 ├── database/
 │   ├── db_manager.py          # SQLite操作
@@ -193,9 +267,11 @@ LineBot/
 | 症状 | 確認事項 |
 |------|---------|
 | カメラが起動しない | `ls /dev/video*` でデバイス確認、`config.py`の`CAMERA_INDEX`を変更 |
-| GPIO エラー | `sudo usermod -aG gpio $USER` でユーザーをgroupに追加後、再ログイン |
+| GPIO エラー | `sudo usermod -aG gpio $USER` でグループ追加後、再ログイン |
 | LINE通知が届かない | `python -m notification.line_bot --test` でトークンを確認 |
-| 在宅判定が機能しない | スマホのMACランダム化無効化・固定IP設定を確認 |
+| Bluetooth在宅判定が動かない | `bluetoothctl` でペアリング済みか確認。`sudo l2ping -c 1 XX:XX:XX` で直接テスト |
+| Wi-Fi在宅判定が動かない | 家庭用ルーターでのみ動作。大学/企業ネットワークはクライアント間通信ブロックで不可 |
+| pip install が途中で止まる | `venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu` で個別インストール |
 | YOLOのロードが遅い | 初回のみモデルダウンロードが発生（~6MB）。2回目以降は高速 |
 | ログ確認 | `tail -f doorbell.log` |
 

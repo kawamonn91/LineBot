@@ -56,6 +56,14 @@ HOME_DEVICE_IPS = [ip.strip() for ip in _home_ips_raw.split(",") if ip.strip()]
 PRESENCE_CHECK_INTERVAL_SEC = 30    # 在宅チェック間隔（秒）
 PRESENCE_ARP_TIMEOUT_SEC = 2        # ARPスキャンのタイムアウト（秒）
 
+# Bluetooth 在宅判定（Wi-Fi非依存の代替手段）
+# .env の HOME_BT_ADDRESSES にスマホの Bluetooth アドレスをカンマ区切りで設定
+# 例: HOME_BT_ADDRESSES=AA:BB:CC:DD:EE:FF
+_home_bt_raw = os.getenv("HOME_BT_ADDRESSES", "")
+HOME_BT_ADDRESSES = [addr.strip() for addr in _home_bt_raw.split(",") if addr.strip()]
+# True: Bluetooth checker を使用 / False: Wi-Fi (network) checker を使用
+PRESENCE_USE_BLUETOOTH = os.getenv("PRESENCE_USE_BLUETOOTH", "false").lower() == "true"
+
 # ============================================================
 # データベース・ファイルパス
 # ============================================================
