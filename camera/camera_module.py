@@ -63,10 +63,12 @@ class CameraModule:
             )
             return False
 
-        # カメラパラメータ設定
-        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-        self._cap.set(cv2.CAP_PROP_FPS, self.fps)
+        # カメラパラメータ設定（エラーが出やすいためコメントアウトまたは緩める）
+        # 一部のUSBカメラは解像度を強制設定すると内部でストリームが壊れ、映像が取得できなくなります。
+        # 今回はカメラのデフォルト解像度をそのまま使用します。
+        # self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+        # self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+        # self._cap.set(cv2.CAP_PROP_FPS, self.fps)
 
         self._running = True
         self._capture_thread = threading.Thread(
