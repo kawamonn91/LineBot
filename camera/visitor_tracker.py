@@ -58,6 +58,7 @@ class VisitorTracker:
         self._lock = threading.Lock()
         self._running = False
         self._monitor_thread: Optional[threading.Thread] = None
+        self._paused_until = 0.0
 
     def start(self):
         """訪問者トラッカーを開始します。"""
@@ -75,6 +76,19 @@ class VisitorTracker:
             self._monitor_thread.join(timeout=5)
         logger.info("訪問者トラッカー停止")
 
+    def pause_detection(self, duration_sec: float):
+        """
+        指定された秒数間、新たな訪問者の検知を停止します。
+        通知直後の過剰反応を防ぐために使用します。
+        """
+        with self._lock:
+            self._paused_until = time.time() + duration_sec
+            self._active = False
+            self._session_start = None
+            self._last_active_time = None
+            self._captured_frames = []
+            logger.info(f"訪問者検知を {duration_sec} 秒間停止します")
+
     def notify_pir_state(self, active: bool):
         """
         PIRセンサーの状態変化を通知します。
@@ -85,6 +99,9 @@ class VisitorTracker:
         """
         with self._lock:
             now = time.time()
+            if self._paused_until and now < self._paused_until:
+                return  # 一時停止中は無視
+
             if active:
                 if not self._active:
                     # 新しいセッション開始
@@ -114,9 +131,14 @@ class VisitorTracker:
         while self._running:
             try:
                 with self._lock:
-                    active = self._active
-                    session_start = self._session_start
-                    last_active = self._last_active_time
+                    if self._paused_until and time.time() < self._paused_until:
+                        active = False
+                        session_start = None
+                        last_active = None
+                    else:
+                        active = self._active
+                        session_start = self._session_start
+                        last_active = self._last_active_time
 
                 now = time.time()
 

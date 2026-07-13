@@ -127,67 +127,82 @@ class DoorbellSystem:
 
         # ── 3. 代表画像の保存 ───────────────────────────────────
         image_path = None
-        if best_result and self._camera:
-            representative_frame = best_result["frame"]
+        if self._camera and frames:
+            if best_result:
+                representative_frame = best_result["frame"]
+            else:
+                # 人物が検出されなかった場合でも、中間フレームを代表画像として保存
+                representative_frame = frames[len(frames) // 2]
+                
             image_path = self._camera.save_frame(
                 frame=representative_frame,
                 subdirectory=session_dir,
                 filename="representative.jpg",
             )
 
-        # ── 4. 郵便受け投函フラグを確認・リセット ───────────────
-        with self._delivery_lock:
-            has_delivery = self._pending_delivery
-            self._pending_delivery = False
+        # 直ちに VisitorTracker で新規検知を90秒間停止する (60秒待機 + 通知後30秒)
+        if self._tracker:
+            self._tracker.pause_detection(90.0)
 
-        # ── 5. 在宅状態を確認 ───────────────────────────────────
-        if self._presence:
-            logger.info("訪問者検知: 最新の在宅状態を即時確認します...")
-            is_home = self._presence.check_now()
-        else:
-            is_home = True  # 判定不能な場合は在宅とみなし通知を省略
+        # ── 待機・通知処理をバックグラウンドで実行 ──────────────────────
+        def delayed_notify():
+            logger.info("郵便投函の確認のため1分間待機します...")
+            time.sleep(60)
 
-        # ── 6. データベースに保存 ───────────────────────────
-        visitor_id = db_manager.insert_visitor(
-            duration_sec=duration_sec,
-            category=category,
-            confidence=confidence,
-            image_path=image_path,
-            has_delivery=has_delivery,
-            user_was_home=is_home,
-        )
+            # ── 4. 郵便受け投函フラグを確認・リセット ───────────────
+            with self._delivery_lock:
+                has_delivery = self._pending_delivery
+                self._pending_delivery = False
 
-        # 郵便受けイベントと紐付け
-        if has_delivery:
-            db_manager.update_visitor_delivery(visitor_id, True)
+            # ── 5. 在宅状態を確認 ───────────────────────────────────
+            if self._presence:
+                logger.info("訪問者検知: 最新の在宅状態を即時確認します...")
+                is_home = self._presence.check_now()
+            else:
+                is_home = True
 
-        # ── 7. 不在時のみLINE通知 ───────────────────────────
-        if not is_home:
-            logger.info("不在中のため LINE 通知を送信します")
-            visitor_record = {
-                "id": visitor_id,
-                "detected_at": datetime.now().isoformat(),
-                "duration_sec": duration_sec,
-                "category": category,
-                "confidence": confidence,
-                "has_delivery": has_delivery,
-                "image_path": image_path,
-            }
-            success = send_visitor_notification(
-                visitor=visitor_record,
+            # ── 6. データベースに保存 ───────────────────────────
+            visitor_id = db_manager.insert_visitor(
+                duration_sec=duration_sec,
+                category=category,
+                confidence=confidence,
                 image_path=image_path,
+                has_delivery=has_delivery,
+                user_was_home=is_home,
             )
-            if success:
-                db_manager.mark_visitor_notified(visitor_id)
-        else:
-            logger.info("在宅中のため LINE 通知をスキップ")
 
-        # ── 8. Google Drive へ非同期アップロード ────────────
-        if image_path and self._drive_uploader:
-            self._drive_uploader.enqueue(
-                local_path=image_path,
-                visitor_id=visitor_id,
-            )
+            if has_delivery:
+                db_manager.update_visitor_delivery(visitor_id, True)
+
+            # ── 7. 不在時のみLINE通知 ───────────────────────────
+            if not is_home:
+                logger.info("不在中のため LINE 通知を送信します")
+                visitor_record = {
+                    "id": visitor_id,
+                    "detected_at": datetime.now().isoformat(),
+                    "duration_sec": duration_sec,
+                    "category": category,
+                    "confidence": confidence,
+                    "has_delivery": has_delivery,
+                    "image_path": image_path,
+                }
+                success = send_visitor_notification(
+                    visitor=visitor_record,
+                    image_path=image_path,
+                )
+                if success:
+                    db_manager.mark_visitor_notified(visitor_id)
+            else:
+                logger.info("在宅中のため LINE 通知をスキップ")
+
+            # ── 8. Google Drive へ非同期アップロード ────────────
+            if image_path and self._drive_uploader:
+                self._drive_uploader.enqueue(
+                    local_path=image_path,
+                    visitor_id=visitor_id,
+                )
+
+        threading.Thread(target=delayed_notify, name="DelayedNotifyThread", daemon=True).start()
 
     def _on_presence_change(self, is_home: bool):
         """在宅状態変化コールバック。"""
@@ -301,8 +316,7 @@ class DoorbellSystem:
 
         def signal_handler(signum, frame):
             logger.info(f"シグナル受信 ({signum}): 停止します...")
-            self.stop()
-            sys.exit(0)
+            self._running = False
 
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
@@ -310,9 +324,10 @@ class DoorbellSystem:
         # メインスレッドはここで待機
         try:
             while self._running:
-                time.sleep(1)
+                time.sleep(0.5)
         except KeyboardInterrupt:
-            pass
+            logger.info("Ctrl+Cを受信しました。")
+            self._running = False
         finally:
             self.stop()
 
