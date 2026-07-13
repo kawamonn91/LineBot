@@ -34,7 +34,7 @@ class CameraModule:
 
     def __init__(
         self,
-        camera_index: int = None,
+        camera_index: int | str = None,
         width: int = None,
         height: int = None,
         fps: int = None,
@@ -58,7 +58,7 @@ class CameraModule:
         self._cap = cv2.VideoCapture(self.camera_index)
         if not self._cap.isOpened():
             logger.error(
-                f"カメラ (index={self.camera_index}) を開けませんでした。"
+                f"カメラを開けませんでした ({self.camera_index})。"
                 "接続を確認してください。"
             )
             return False
@@ -76,7 +76,7 @@ class CameraModule:
         )
         self._capture_thread.start()
         logger.info(
-            f"カメラ起動: index={self.camera_index} "
+            f"カメラ起動: {self.camera_index} "
             f"{self.width}x{self.height} @ {self.fps}fps"
         )
         return True
