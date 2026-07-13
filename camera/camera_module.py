@@ -55,10 +55,16 @@ class CameraModule:
         if self._running:
             return True
 
-        self._cap = cv2.VideoCapture(self.camera_index)
+        # 文字列パス（/dev/v4l/by-id/... など）はシンボリックリンクを解決する
+        open_target = self.camera_index
+        if isinstance(open_target, str):
+            open_target = os.path.realpath(open_target)
+            logger.debug(f"カメラパス解決: {self.camera_index} → {open_target}")
+
+        self._cap = cv2.VideoCapture(open_target)
         if not self._cap.isOpened():
             logger.error(
-                f"カメラを開けませんでした ({self.camera_index})。"
+                f"カメラを開けませんでした ({open_target})。"
                 "接続を確認してください。"
             )
             return False

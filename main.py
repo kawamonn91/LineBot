@@ -141,8 +141,10 @@ class DoorbellSystem:
             self._pending_delivery = False
 
         # ── 5. 在宅状態を確認 ───────────────────────────────────
-        is_home = self._presence.is_home if self._presence else None
-        if is_home is None:
+        if self._presence:
+            logger.info("訪問者検知: 最新の在宅状態を即時確認します...")
+            is_home = self._presence.check_now()
+        else:
             is_home = True  # 判定不能な場合は在宅とみなし通知を省略
 
         # ── 6. データベースに保存 ───────────────────────────

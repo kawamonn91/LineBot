@@ -107,11 +107,21 @@ class BluetoothPresenceChecker:
             return self._is_home
 
     def check_now(self) -> bool:
-        """即座に在宅チェックを実行して結果を返します（デバッグ用）。"""
-        result = self._scan_all_devices()
+        """即座に在宅チェックを実行して結果を返します。"""
+        current = self._scan_all_devices()
         with self._lock:
-            self._is_home = result
-        return result
+            previous = self._is_home
+            self._is_home = current
+            
+        if previous != current and self.on_change_callback:
+            status = "在宅" if current else "不在"
+            logger.info(f"Bluetooth 在宅状態変化 (即時): {status}")
+            try:
+                self.on_change_callback(current)
+            except Exception as e:
+                logger.error(f"在宅コールバックエラー: {e}")
+                
+        return current
 
     def _check_loop(self):
         """定期的にデバイスの存在確認を行うループ。"""
