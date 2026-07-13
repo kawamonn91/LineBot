@@ -50,7 +50,6 @@ from camera.camera_module import CameraModule
 from camera.visitor_tracker import VisitorTracker
 from detection.yolo_detector import YOLODetector
 from detection.classifier import VisitorClassifier
-from presence.network_checker import NetworkPresenceChecker
 from presence.bluetooth_checker import BluetoothPresenceChecker
 from notification.line_bot import send_visitor_notification
 from scheduler.daily_report import DailyReportScheduler
@@ -249,17 +248,11 @@ class DoorbellSystem:
         )
         self._mailbox.start()
 
-        # 在宅チェッカー（Bluetooth or Wi-Fi ネットワーク）
-        if config.PRESENCE_USE_BLUETOOTH:
-            self._presence = BluetoothPresenceChecker(
-                on_change_callback=self._on_presence_change,
-            )
-            logger.info("在宅判定: Bluetooth モード")
-        else:
-            self._presence = NetworkPresenceChecker(
-                on_change_callback=self._on_presence_change,
-            )
-            logger.info("在宅判定: Wi-Fi (ARP/ping) モード")
+        # 在宅チェッカー（Bluetooth のみ）
+        self._presence = BluetoothPresenceChecker(
+            on_change_callback=self._on_presence_change,
+        )
+        logger.info("在宅判定: Bluetooth モード")
         self._presence.start()
 
         # 日次レポートスケジューラー
