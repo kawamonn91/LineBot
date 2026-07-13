@@ -290,8 +290,9 @@ class DoorbellSystem:
 
     def stop(self):
         """全モジュールを安全に停止します。"""
-        if not self._running:
+        if getattr(self, '_stopped', False):
             return
+        self._stopped = True
         self._running = False
         logger.info("システム停止中...")
 
@@ -330,6 +331,7 @@ class DoorbellSystem:
             self._running = False
         finally:
             self.stop()
+            sys.exit(0)
 
 
 def main():
