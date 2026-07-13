@@ -140,14 +140,14 @@ class DoorbellSystem:
                 filename="representative.jpg",
             )
 
-        # 直ちに VisitorTracker で新規検知を90秒間停止する (60秒待機 + 通知後30秒)
+        # 直ちに VisitorTracker で新規検知を60秒間停止する (30秒待機 + 通知後30秒)
         if self._tracker:
-            self._tracker.pause_detection(90.0)
+            self._tracker.pause_detection(60.0)
 
         # ── 待機・通知処理をバックグラウンドで実行 ──────────────────────
         def delayed_notify():
-            logger.info("郵便投函の確認のため1分間待機します...")
-            time.sleep(60)
+            logger.info("郵便投函の確認のため30秒間待機します...")
+            time.sleep(30)
 
             # ── 4. 郵便受け投函フラグを確認・リセット ───────────────
             with self._delivery_lock:
