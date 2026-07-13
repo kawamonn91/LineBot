@@ -71,32 +71,78 @@ ls -lh data/images/test_capture.jpg
 
 ---
 
-## 3. 🏠 在宅判定テスト
+## 3. 🏠 在宅判定テスト（Bluetooth モード）
 
-スマートフォンの IP アドレスを ping/ARP でスキャンし、在宅状態を判定します。
+スマートフォンの Bluetooth アドレスに l2ping を送り、在宅状態を判定します。
+
+### 事前準備（初回のみ）
+
+Raspberry Pi とスマートフォンを一度ペアリングしてください：
 
 ```bash
-python -m presence.network_checker --debug
+bluetoothctl
+```
+```
+[bluetooth]# scan on
+# スマホの BT アドレス（例: AA:BB:CC:DD:EE:FF）を確認したら:
+[bluetooth]# pair AA:BB:CC:DD:EE:FF
+[bluetooth]# trust AA:BB:CC:DD:EE:FF
+[bluetooth]# scan off
+[bluetooth]# exit
+```
+
+確認したアドレスを `.env` に設定してください：
+```
+HOME_BT_ADDRESSES=AA:BB:CC:DD:EE:FF
+PRESENCE_USE_BLUETOOTH=true
+```
+
+---
+
+### 3-1. 周辺デバイスのスキャン（アドレス確認）
+
+```bash
+python -m presence.bluetooth_checker --scan
+```
+
+**期待する出力:**
+```
+周辺の Bluetooth デバイスをスキャン中... (10秒)
+スマートフォンの Bluetooth を ON にして画面をつけてください。
+
+AA:BB:CC:DD:EE:FF    Taro's iPhone
+上記のアドレスを .env の HOME_BT_ADDRESSES に設定してください。
+```
+
+---
+
+### 3-2. 在宅判定テスト
+
+```bash
+python -m presence.bluetooth_checker --debug
 ```
 
 **期待する出力（在宅時）:**
 ```
-対象デバイス: ['172.21.8.77']
-DEBUG: デバイス検出: 172.21.8.77 → 在宅
+対象デバイス: ['AA:BB:CC:DD:EE:FF']
+DEBUG: Bluetooth 検出: AA:BB:CC:DD:EE:FF → 在宅
 在宅状態: ✅ 在宅
 ```
 
 **期待する出力（不在時）:**
 ```
-対象デバイス: ['172.21.8.77']
-DEBUG: 全デバイス未検出 ['172.21.8.77'] → 不在
+対象デバイス: ['AA:BB:CC:DD:EE:FF']
+DEBUG: Bluetooth 未検出: AA:BB:CC:DD:EE:FF (連続失敗 3/3)
 在宅状態: ❌ 不在
 ```
 
 **失敗した場合:**
-- スマートフォンが同じ Wi-Fi に接続されているか確認
-- `.env` の `HOME_DEVICE_IPS` の IP アドレスが正しいか確認
-- スマートフォンの「プライベート Wi-Fi アドレス（MAC ランダム化）」をオフにする
+| 症状 | 確認事項 |
+|------|---------|
+| `HOME_BT_ADDRESSES が未設定` | `.env` の `HOME_BT_ADDRESSES` を設定 |
+| `l2ping コマンドが見つかりません` | `sudo apt install bluez` でインストール |
+| 常に不在と判定される | スマホの Bluetooth が ON になっているか確認。ペアリング済みか `bluetoothctl` で確認 |
+| 常に在宅と判定される | `.env` の `PRESENCE_USE_BLUETOOTH=true` が設定されているか確認 |
 
 ---
 
@@ -264,12 +310,13 @@ tail -f doorbell.log
 初めて動作確認する場合は以下の順序で進めてください：
 
 ```
-1. LINE 接続テスト              → 通知インフラの確認
-2. カメラ撮影 → LINE 送信テスト → 画像送信の確認
-3. 在宅判定テスト               → 在宅検知の確認
-4. 光センサー診断               → 郵便受けセンサーの確認
-5. 日次レポートテスト           → レポート機能の確認
-6. システム全体起動             → 統合動作の確認
+1. LINE 接続テスト                    → 通知インフラの確認
+2. カメラ撮影 → LINE 送信テスト       → 画像送信の確認
+3-1. BT スキャン（初回のみ）          → スマホの BT アドレス確認
+3-2. 在宅判定テスト（Bluetooth）      → 在宅検知の確認
+4. 光センサー診断                     → 郵便受けセンサーの確認
+5. 日次レポートテスト                 → レポート機能の確認
+6. システム全体起動                   → 統合動作の確認
 ```
 
 ---
@@ -283,3 +330,6 @@ tail -f doorbell.log
 | `LINE_CHANNEL_ACCESS_TOKEN が未設定` | `.env` が読み込まれていない | `source venv/bin/activate` で venv を有効化 |
 | `カメラを開けませんでした` | カメラが接続されていない or インデックスが違う | `ls /dev/video*` で確認し `config.py` の `CAMERA_INDEX` を変更 |
 | `RuntimeError: Not running on a RPi!` | GPIO を PC 上で実行した | Raspberry Pi 上で実行する（センサー以外は PC でも動作可） |
+| `l2ping コマンドが見つかりません` | bluez 未インストール | `sudo apt install bluez` でインストール |
+| Bluetooth 在宅判定が常に不在 | ペアリング未実施 or スマホの BT が OFF | `bluetoothctl` でペアリング、スマホの BT を ON に |
+| `GPIO busy` | 別プロセスが GPIO を使用中 | `ps aux | grep python` で確認し、重複プロセスを `kill <PID>` で停止 |
