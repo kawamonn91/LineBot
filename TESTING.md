@@ -13,6 +13,8 @@ cd ~/LineBot
 
 # ② 仮想環境を有効化（毎回必要）
 source venv/bin/activate
+
+python main.py
 ```
 
 > **注意**: `cd ~/LineBot/presence` のようにサブディレクトリに移動した状態でモジュールを実行すると `ModuleNotFoundError` になります。常に `~/LineBot` から実行してください。
